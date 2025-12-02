@@ -1,0 +1,22 @@
+package com.example.two.api
+
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+
+object RetrofitClient {
+
+    private const val BASE_URL = "https://api.giphy.com/"
+    private const val YOUR_GIPHY_API_KEY = "yNcP0o8IBcnRgu2LSFp3gRWIKm3njmcE"
+
+    val giphyApiService: GiphyApiService by lazy {
+        Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(GiphyApiService::class.java)
+    }
+
+    fun getApiKey(): String {
+        return YOUR_GIPHY_API_KEY
+    }
+}
