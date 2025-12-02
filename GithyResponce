@@ -1,0 +1,31 @@
+package com.example.two.api
+
+
+import com.google.gson.annotations.SerializedName
+
+data class GiphyResponse(
+    @SerializedName("data") val data: List<GiphyItem>,
+    @SerializedName("pagination") val pagination: Pagination
+)
+
+data class GiphyItem(
+    @SerializedName("id") val id: String,
+    @SerializedName("images") val images: ImageContainer
+)
+
+data class ImageContainer(
+    @SerializedName("fixed_height") val fixedHeight: ImageDetails,
+    @SerializedName("original") val original: ImageDetails
+)
+
+data class ImageDetails(
+    @SerializedName("url") val url: String,
+    @SerializedName("width") val width: String,
+    @SerializedName("height") val height: String
+)
+
+data class Pagination(
+    @SerializedName("total_count") val totalCount: Int,
+    @SerializedName("count") val count: Int,
+    @SerializedName("offset") val offset: Int
+)
