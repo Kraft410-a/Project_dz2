@@ -1,0 +1,205 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
+package com.example.two
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.example.two.api.RetrofitClient
+import com.example.two.ui.theme.ImageGalleryAppTheme
+import android.widget.Toast
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+data class ImageItem(val id: String, val url: String)
+
+@ExperimentalMaterial3Api
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GalleryScreen(modifier: Modifier = Modifier) {
+    var imageItems by remember { mutableStateOf(emptyList<ImageItem>()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var page by remember { mutableStateOf(1) }
+
+    val context = LocalContext.current
+
+    LaunchedEffect(page) {
+        isLoading = true
+        errorMessage = null
+        try {
+            val fetchedItems = fetchImages(page)
+            imageItems = if (page == 1) fetchedItems else imageItems + fetchedItems
+        } catch (e: Exception) {
+            errorMessage = "Ошибка загрузки: ${e.message}"
+        } finally {
+            isLoading = false
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(title = { Text("Галерея изображений") })
+        }
+    ) { paddingValues ->
+        Box(
+            modifier = modifier
+                .padding(paddingValues)
+                .fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isLoading && imageItems.isEmpty()) {
+                CircularProgressIndicator()
+            } else if (errorMessage != null) {
+                ErrorView(
+                    message = errorMessage!!,
+                    onRetry = {
+                        page = 1
+                    }
+                )
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    /*items(imageItems, key = { it.id }) { item ->
+                        ImageCard(imageItem = item) { clickedItem ->
+                            //val notificationMessage = "Вы кликнули на изображение №${clickedItem.id}"
+                            Toast.makeText(
+                                context,
+                                "Вы кликнули на изображение №${clickedItem.id}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }*/
+
+                    itemsIndexed(imageItems, key = { index, item -> item.id }) { index, item ->
+                        ImageCard(imageItem = item) { clickedItem ->
+                            Toast.makeText(
+                                context,
+                                "Вы кликнули на изображение №${index + 1}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                    if (isLoading) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(56.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ImageCard(imageItem: ImageItem, onClick: (ImageItem) -> Unit) {
+    Card(
+        modifier = Modifier
+            .aspectRatio(1f) // Сохраняем пропорции карточки
+            .fillMaxWidth(),
+        onClick = { onClick(imageItem) }
+    ) {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(imageItem.url)
+                .crossfade(true)
+                .build(),
+            contentDescription = "Изображение ${imageItem.id}",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
+
+@Composable
+fun ErrorView(message: String, onRetry: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(text = message)
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(onClick = onRetry) {
+            Text("Повторить")
+        }
+    }
+}
+
+
+suspend fun fetchImages(page: Int): List<ImageItem> {
+    // Получаем API ключ из нашего Retrofit клиента
+    val apiKey = RetrofitClient.getApiKey()
+    // Определяем, сколько изображений хотим получать за один раз (лимит)
+    val limit = 20
+    // Рассчитываем смещение (offset) для пагинации
+    // offset = (номер_страницы - 1) * лимит
+    val offset = (page - 1) * limit
+
+    // Используем try-catch для обработки возможных ошибок при сетевом запросе
+    return try {
+        // Делаем запрос к Giphy API с помощью нашего сервиса
+        val response = RetrofitClient.giphyApiService.getTrendingGifs(apiKey, limit, offset)
+
+        // Проверяем, был ли запрос успешен (статус 2xx)
+        if (response.isSuccessful) {
+            // Если успешно, получаем тело ответа (GiphyResponse)
+            // ?.data?.map {...} - безопасно получаем список данных и преобразуем каждый GiphyItem в наш ImageItem
+            // ?: emptyList() - если тело ответа null, возвращаем пустой список
+            response.body()?.data?.map { giphyItem ->
+                ImageItem(
+                    id = giphyItem.id, // Берем ID из ответа Giphy
+                    // Для URL используем 'fixed_height'. Можно также использовать 'original'.
+                    // Важно понимать, что 'fixed_height' обычно имеет более предсказуемый размер,
+                    // что может быть лучше для сетки.
+                    url = giphyItem.images.fixedHeight.url
+                )
+            } ?: emptyList()
+        } else {
+            // Если запрос не успешен (например, ошибка авторизации 401, ошибка сервера 500)
+            // Получаем тело ошибки, чтобы понять, в чем проблема
+            val errorBody = response.errorBody()?.string()
+            // Бросаем исключение с кодом ошибки и сообщением
+            throw Exception("Ошибка API: ${response.code()} - ${errorBody ?: response.message()}")
+        }
+    } catch (e: Exception) {
+        // Обрабатываем сетевые ошибки (например, нет интернета, ошибка DNS, таймаут)
+        // Бросаем исключение с понятным сообщением
+        throw Exception("Ошибка сети или обработки данных: ${e.message}")
+    }
+}
+
+
+
+@ExperimentalMaterial3Api
+@OptIn(ExperimentalMaterial3Api::class)
+//@ExperimentalMaterial3Api
+//@ExperimentalMaterial3Api
+@Preview(showBackground = true)
+@Composable
+fun GalleryScreenPreview() {
+    ImageGalleryAppTheme {
+        GalleryScreen()
+    }
+}
